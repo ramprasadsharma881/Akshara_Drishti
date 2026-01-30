@@ -1,0 +1,246 @@
+================================================================================
+                    AKSHARADRISHTI OCR SYSTEM - COMPLETE DOCUMENTATION
+                            Cloud Vision Level Accuracy
+================================================================================
+
+LATEST UPDATE: AI Spell Check Integration (Gemini)
+--------------------------------------------------
+Date: January 27, 2026
+
+NEW FEATURE: AI-POWERED SPELL CORRECTION
+========================================
+
+Added Gemini AI integration to automatically fix OCR spelling errors!
+
+HOW IT WORKS:
+1. After Tesseract OCR completes, text is sent to Gemini 1.5 Flash
+2. Gemini fixes ONLY obvious OCR spelling mistakes
+3. Technical/religious terms are preserved unchanged
+4. Corrected text replaces original in the DOCX
+
+CONFIGURATION:
+- Set HELICONE_API_KEY in Railway environment variables
+- Optional: Set GEMINI_API_KEY as fallback
+- SPELL_CHECK_ENABLED=true (enabled by default)
+
+API FLOW:
+[PDF] → [Tesseract OCR] → [Linguistic Repair] → [Gemini Spell Check] → [DOCX]
+
+PROMPT STRATEGY:
+- Conservative corrections only
+- Preserves Sanskrit mantras, proper nouns
+- Handles Kannada, Telugu, Sanskrit scripts
+- Temperature: 0.1 (minimal creativity)
+
+FILES ADDED:
+- gemini_spell_check.py - AI spell correction module
+
+================================================================================
+
+PREVIOUS UPDATE: Bold Formatting & Asterisk Artifacts Fix
+---------------------------------------------------------
+Date: January 27, 2026
+
+ISSUES FIXED:
+1. One page completely bold, another normal - FIXED
+2. Asterisks in text like *ದಕ್ಷಿಣಾಮೂರ್ತಿಸ್ತೋತ್ರ* - FIXED
+3. Book title repeated on every page - FIXED
+
+ROOT CAUSES IDENTIFIED:
+- The shloka detection was too aggressive - ANY text with ॥ was being bolded
+- Tesseract misreads some characters as asterisks (*) - these are OCR artifacts
+- Header/footer cropping was too shallow (5%/4%) - book titles weren't removed
+
+SOLUTIONS IMPLEMENTED:
+
+1. ASTERISK ARTIFACT REMOVAL (NEW FUNCTION)
+   - Added `remove_asterisk_artifacts()` function
+   - Removes patterns like *word* → word
+   - Removes *.0* → .0 (verse number corruption)
+   - Removes isolated asterisks that are OCR noise
+   - Applied BEFORE other text processing
+
+2. ULTRA-CONSERVATIVE SHLOKA DETECTION
+   - Previously: Any text with ॥ or ending with ॥ was marked as shloka
+   - Now: Only clear verse patterns are detected:
+     * Verse number lines like ॥ 12 ॥ (under 30 chars)
+     * Text starting with Om (ॐ, ಓಂ, ఓం)
+     * SHORT lines (under 120 chars, under 15 words) ending with ॥
+     * Text enclosed in ॥...॥ if short
+   - Long paragraphs ending with ॥ are NO LONGER marked as verses
+   - Regular sentences in Vedantic texts use ॥ - these are NOT bolded
+
+3. CONSERVATIVE HEADING DETECTION
+   - Maximum length for headings: 80 characters
+   - Text with punctuation + more text = sentence, NOT heading
+   - Chapter keywords only valid if text is under 60 chars
+   - Numbered sections only if under 50 chars
+
+4. CONSERVATIVE SANSKRIT DETECTION
+   - Only short text (under 150 chars) considered
+   - Must be >70% Devanagari script
+   - Must NOT be mixed with significant Kannada/Telugu (>20%)
+   - Long mixed-script paragraphs are NOT bolded
+
+5. INCREASED HEADER/FOOTER CROPPING
+   - Top crop: 8% (was 5%) - removes book titles
+   - Bottom crop: 6% (was 4%) - removes page numbers
+   - This removes repeated elements like "ದಕ್ಷಿಣಾಮೂರ್ತಿಸ್ತೋತ್ರ"
+
+================================================================================
+                         SYSTEM ARCHITECTURE
+================================================================================
+
+1. IMAGE PREPROCESSING PIPELINE ("Clean & Pop")
+   ├── Header/Footer Cropping (8% top, 6% bottom)
+   ├── Denoising (cv2.fastNlMeansDenoising)
+   ├── CLAHE Contrast Enhancement
+   ├── Adaptive Gaussian Thresholding
+   └── Context Padding (30px white border)
+
+2. OCR ENGINE
+   ├── Tesseract with OEM 1 (LSTM only)
+   ├── PSM 6 (Uniform block of text)
+   ├── Confidence scoring (words under 65% tracked)
+   └── NO asterisk markers in output
+
+3. LINGUISTIC REPAIR LAYER
+   ├── Asterisk Artifact Removal (NEW)
+   ├── Sandhi/Word Joining (hyphen breaks)
+   ├── Danda Normalization (I/l/1 → ।/॥)
+   └── OCR Garbage Removal
+
+4. TEXT CLASSIFICATION (Very Conservative)
+   ├── is_shloka_or_verse() - Only clear verse patterns
+   ├── is_heading_or_title() - Only chapter keywords, short text
+   ├── is_uvacha_pattern() - Speaker introductions
+   └── is_sanskrit_content() - Only pure Sanskrit, short text
+
+5. DOCUMENT FORMATTING
+   ├── ALL text: Left justified
+   ├── Headings: Bold + extra spacing
+   ├── Shlokas: Bold + paragraph breaks
+   ├── Normal text: NOT bold (this was the bug)
+   └── Quality report at end
+
+================================================================================
+                         FORMATTING RULES (USER REQUIREMENTS)
+================================================================================
+
+REQUIREMENT 1: Left Justification
+- ALL text in the DOCX is left-justified
+- Implementation: WD_ALIGN_PARAGRAPH.LEFT
+
+REQUIREMENT 2: Bold Headings
+- Chapter names, section titles are bold
+- Detection: Chapter keywords + short length
+- NOT: Every short line (was causing issues)
+
+REQUIREMENT 3: Bold Shlokas (Separate Paragraphs)
+- Shlokas/verses are bold with paragraph breaks
+- Detection: Verse number patterns, Om, enclosed dandas
+- NOT: Regular text ending with ॥ (was causing entire pages to be bold)
+
+REQUIREMENT 4: Minimal Paragraph Spacing
+- Space before: 0pt (normal), 8-12pt (headings/verses)
+- Space after: 6pt (normal), 8-10pt (verses)
+- Line spacing: 1.15
+
+REQUIREMENT 5: No Headers/Footers
+- Aggressive cropping: 8% top, 6% bottom
+- Removes: Book titles, page numbers, running headers
+
+REQUIREMENT 6: Preserve Paragraphs
+- Original paragraph structure maintained
+- Verses keep line breaks
+- Prose merged into continuous text
+
+================================================================================
+                         WHAT SHOULD BE BOLD (CLEAR RULES)
+================================================================================
+
+BOLD:
+1. Chapter/Section names with keywords (अध्याय, ಅಧ್ಯಾಯ, అధ్యాయ, etc.)
+2. Numbered sections if very short (under 50 chars)
+3. Uvacha patterns (speaker introductions)
+4. Verse number lines (॥ 12 ॥)
+5. Short text starting with Om (ॐ)
+6. Short verses (under 120 chars, under 15 words) ending with ॥
+7. Pure Sanskrit text (>70% Devanagari) if short (under 150 chars)
+
+NOT BOLD:
+1. Regular paragraphs (even if they end with ॥)
+2. Long commentary text (even with Sanskrit quotes)
+3. Text with sentence punctuation in the middle
+4. Anything over 80 chars (for headings) or 150 chars (for Sanskrit)
+5. Mixed-script text (Kannada/Telugu + Sanskrit)
+
+================================================================================
+                         THREAD EXHAUSTION FIX
+================================================================================
+
+Problem: OpenCV + Tesseract + ProcessPoolExecutor caused thread exhaustion
+Solution:
+  - cv2.setNumThreads(2)
+  - os.environ["OMP_NUM_THREADS"] = "2"
+  - NUM_WORKERS = min(8, max(2, multiprocessing.cpu_count() // 4))
+
+================================================================================
+                         PARALLEL PROCESSING
+================================================================================
+
+- Uses ProcessPoolExecutor for page-level parallelism
+- Each page processed independently with full pipeline
+- Results sorted by page index before document creation
+- Failed pages logged but don't crash the job
+- Quality report includes success/failure stats
+
+================================================================================
+                         FILE STRUCTURE
+================================================================================
+
+kts-enhance/
+├── app.py                  - FastAPI application, endpoints, job management
+├── ocr_utils.py            - Core OCR, preprocessing, formatting
+├── gemini_spell_check.py   - AI spell correction (Gemini via Helicone)
+├── requirements.txt        - Python dependencies
+├── Dockerfile              - Container configuration
+├── static/index.html       - Web interface
+└── explanation.txt         - This documentation
+
+================================================================================
+                         ENDPOINTS
+================================================================================
+
+POST /api/upload        - Upload PDF for OCR processing
+GET  /api/status/{id}   - Check job status
+GET  /api/download/{id} - Download processed DOCX
+GET  /api/health        - System health check
+
+================================================================================
+                         DEPENDENCIES
+================================================================================
+
+fastapi==0.115.0
+uvicorn==0.32.0
+python-multipart==0.0.12
+Pillow==10.4.0
+pytesseract==0.3.13
+pdf2image==1.17.0
+python-docx==1.1.2
+opencv-python-headless==4.9.0.80
+numpy==1.26.4
+httpx==0.27.0              - HTTP client for Gemini API calls
+
+================================================================================
+                         ENVIRONMENT VARIABLES
+================================================================================
+
+HELICONE_API_KEY    - Required for AI spell check via Helicone
+GEMINI_API_KEY      - Optional fallback for direct Gemini API
+SPELL_CHECK_ENABLED - "true" or "false" (default: true)
+
+================================================================================
+                         GENERATED BY AKSHARADRISHTI
+                    For Vedantic Literature Preservation
+================================================================================
